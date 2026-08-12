@@ -498,6 +498,116 @@ static void check_neg_invariants(struct val_neg_cache* neg)
 	lock_basic_unlock(&neg->lock);
 }
 
+/** add an NSEC with the given owner name to the given zone.
+ * The names are wireformat dnames without 0 bytes inside them, so that
+ * strlen works on them, like the rest of this test file. */
+static void add_item_at(struct val_neg_cache* neg, char* zname, char* from,
+	char* to)
+{
+	struct val_neg_zone* z;
+	struct packed_rrset_data rd;
+	struct ub_packed_rrset_key nsec;
+	size_t rr_len;
+	time_t rr_ttl;
+	uint8_t* rr_data;
+	char rdata[256];
+
+	lock_basic_lock(&neg->lock);
+	z = neg_find_zone(neg, (uint8_t*)zname, strlen(zname)+1,
+		LDNS_RR_CLASS_IN);
+	if(!z)
+		z = neg_create_zone(neg, (uint8_t*)zname, strlen(zname)+1,
+			LDNS_RR_CLASS_IN);
+	unit_assert(z);
+	val_neg_zone_take_inuse(z);
+
+	/* the rdata is the next owner name, with the rdata length in front */
+	memmove(rdata+2, to, strlen(to)+1);
+	rdata[0] = (char)(strlen(to)+1);
+	rdata[1] = 0;
+
+	memset(&rd, 0, sizeof(rd));
+	memset(&nsec, 0, sizeof(nsec));
+	nsec.rk.dname = (uint8_t*)from;
+	nsec.rk.dname_len = strlen(from)+1;
+	nsec.rk.type = htons(LDNS_RR_TYPE_NSEC);
+	nsec.rk.rrset_class = htons(LDNS_RR_CLASS_IN);
+	nsec.entry.data = &rd;
+	rd.security = sec_status_secure;
+	rd.count = 1;
+	rd.rr_len = &rr_len;
+	rr_len = strlen(to)+1+2;
+	rd.rr_ttl = &rr_ttl;
+	rr_ttl = 0;
+	rd.rr_data = &rr_data;
+	rr_data = (uint8_t*)rdata;
+
+	neg_insert_data(neg, z, &nsec);
+	lock_basic_unlock(&neg->lock);
+}
+
+/** see if a zone is present and in use in the negative cache */
+static int zone_in_use(struct val_neg_cache* neg, char* zname)
+{
+	struct val_neg_zone* z;
+	int res;
+	lock_basic_lock(&neg->lock);
+	z = neg_find_zone(neg, (uint8_t*)zname, strlen(zname)+1,
+		LDNS_RR_CLASS_IN);
+	res = (z && z->in_use);
+	lock_basic_unlock(&neg->lock);
+	return res;
+}
+
+/** test val_neg_remove_ds_denial, used by unbound-control flush_delegation */
+static void remove_ds_denial_test(struct val_neg_cache* neg)
+{
+	char* com = "\003com";
+	char* example = "\007example\003com";
+	char* net = "\003net";
+
+	if(negverbose)
+		printf("neg remove_ds_denial test\n");
+
+	/* The denial of the DS for example.com is in the com zone, and it
+	 * can be the NSEC at the name itself, or one that covers it. */
+	add_item_at(neg, com, example, "\007zexampl\003com");
+	add_item_at(neg, com, "\003aaa\003com", "\003bbb\003com");
+	/* the zone itself may also have negative cache contents */
+	add_item_at(neg, example, example, "\003www\007example\003com");
+	/* an unrelated zone that has to be left alone */
+	add_item_at(neg, net, "\003aaa\003net", "\003bbb\003net");
+	check_neg_invariants(neg);
+	unit_assert(zone_in_use(neg, com));
+	unit_assert(zone_in_use(neg, example));
+	unit_assert(zone_in_use(neg, net));
+
+	val_neg_remove_ds_denial(neg, (uint8_t*)example, strlen(example)+1,
+		LDNS_RR_CLASS_IN);
+	check_neg_invariants(neg);
+	unit_assert(!zone_in_use(neg, com));
+	unit_assert(!zone_in_use(neg, example));
+	unit_assert(zone_in_use(neg, net));
+
+	/* it is not an error if there is nothing to remove */
+	val_neg_remove_ds_denial(neg, (uint8_t*)example, strlen(example)+1,
+		LDNS_RR_CLASS_IN);
+	check_neg_invariants(neg);
+	unit_assert(zone_in_use(neg, net));
+
+	/* the root has no parent to look in, and must not walk off the name */
+	val_neg_remove_ds_denial(neg, (uint8_t*)"", 1, LDNS_RR_CLASS_IN);
+	check_neg_invariants(neg);
+	unit_assert(zone_in_use(neg, net));
+
+	/* clean up for the next test */
+	val_neg_remove_ds_denial(neg, (uint8_t*)"\003aaa\003net", 9,
+		LDNS_RR_CLASS_IN);
+	check_neg_invariants(neg);
+	unit_assert(!zone_in_use(neg, net));
+	unit_assert(neg->first == NULL);
+}
+
 /** perform stress test on insert and delete in neg cache */
 static void stress_test(struct val_neg_cache* neg)
 {
@@ -538,7 +648,8 @@ void neg_test(void)
 	/* create with defaults */
 	neg = val_neg_create(NULL, 1500);
 	unit_assert(neg);
-	
+
+	remove_ds_denial_test(neg);
 	stress_test(neg);
 
 	neg_cache_delete(neg);

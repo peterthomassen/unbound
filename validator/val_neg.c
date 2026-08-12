@@ -1600,6 +1600,74 @@ val_neg_getmsg(struct val_neg_cache* neg, struct query_info* qinfo,
 	return msg;
 }
 
+/**
+ * Delete all in-use data elements from a zone in the negative cache.
+ * The zone itself is deleted by neg_delete_data() once its tree runs empty,
+ * and must not be dereferenced after this call.
+ * Caller must hold neg->lock.
+ * @param neg: negative cache.
+ * @param zone: zone to empty out.
+ */
+static void
+neg_zone_delete_datas(struct val_neg_cache* neg, struct val_neg_zone* zone)
+{
+	rbnode_type* n;
+	struct val_neg_data** list;
+	size_t i, num = 0;
+
+	RBTREE_FOR(n, rbnode_type*, &zone->tree) {
+		if(((struct val_neg_data*)n)->in_use)
+			num++;
+	}
+	if(num == 0)
+		return;
+	list = (struct val_neg_data**)calloc(num, sizeof(*list));
+	if(!list) {
+		log_err("out of memory in neg_zone_delete_datas");
+		return;
+	}
+	i = 0;
+	RBTREE_FOR(n, rbnode_type*, &zone->tree) {
+		if(((struct val_neg_data*)n)->in_use && i < num)
+			list[i++] = (struct val_neg_data*)n;
+	}
+	/* An in-use element has count>0, and so do its parents, so deleting
+	 * one element never frees another in-use element.  The zone itself
+	 * can be freed by the last delete, hence it is not touched again. */
+	for(i=0; i<num; i++)
+		neg_delete_data(neg, list[i]);
+	free(list);
+}
+
+void
+val_neg_remove_ds_denial(struct val_neg_cache* neg, uint8_t* nm, size_t nmlen,
+	uint16_t dclass)
+{
+	uint8_t* zname = nm;
+	size_t zname_len = nmlen;
+	struct val_neg_zone* zone;
+
+	lock_basic_lock(&neg->lock);
+	/* The denial of the DS is held by the parent zone.  Look it up the
+	 * same way val_neg_getmsg() does, one label up and then the closest
+	 * in-use zone above that; the name one label up is inside the parent
+	 * zone but need not be its apex. */
+	if(!dname_is_root(zname)) {
+		dname_remove_label(&zname, &zname_len);
+		zone = neg_closest_zone_parent(neg, zname, zname_len,
+			dname_count_labels(zname), dclass);
+		while(zone && !zone->in_use)
+			zone = zone->parent;
+		if(zone)
+			neg_zone_delete_datas(neg, zone);
+	}
+	/* And any denial the zone itself has cached. */
+	zone = neg_find_zone(neg, nm, nmlen, dclass);
+	if(zone && zone->in_use)
+		neg_zone_delete_datas(neg, zone);
+	lock_basic_unlock(&neg->lock);
+}
+
 void
 val_neg_adjust_size(struct val_neg_cache* neg, size_t max)
 {

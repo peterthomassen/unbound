@@ -241,10 +241,26 @@ void val_neg_addreferral(struct val_neg_cache* neg, struct reply_info* rep,
  * 	This reply may still need validation.
  * 	NULL if nothing found (or out of memory).
  */
-struct dns_msg* val_neg_getmsg(struct val_neg_cache* neg, 
-	struct query_info* qinfo, struct regional* region, 
+struct dns_msg* val_neg_getmsg(struct val_neg_cache* neg,
+	struct query_info* qinfo, struct regional* region,
 	struct rrset_cache* rrset_cache, struct sldns_buffer* buf, time_t now,
 	int addsoa, uint8_t* topname, struct config_file* cfg);
+
+/**
+ * Remove the cached denial of existence of a DS for the given name.
+ * That denial is held by the parent zone, so this removes the negative
+ * cache contents of the closest zone above the name, as well as those of
+ * the name itself.  Used by unbound-control flush_delegation, so that a
+ * newly created DS is not shadowed by a cached NSEC or NSEC3 record.
+ * Note that DS denial from the negative cache is not subject to the
+ * aggressive-nsec setting; it is always enabled.
+ * @param neg: negative cache.
+ * @param nm: name of the delegation; uncompressed wireformat.
+ * @param nmlen: length of nm.
+ * @param dclass: class of the delegation, host order.
+ */
+void val_neg_remove_ds_denial(struct val_neg_cache* neg, uint8_t* nm,
+	size_t nmlen, uint16_t dclass);
 
 
 /**** functions exposed for unit test ****/

@@ -1,3 +1,9 @@
+13 August 2026: Peter Thomassen
+	- Add val_neg_remove_ds_denial(), it removes the cached NSEC and
+	  NSEC3 records that deny the DS of a name from the negative
+	  cache. Those records are held by the parent zone.
+	- Unit test for val_neg_remove_ds_denial.
+
 11 August 2026: Wouter
 	- Fix #1492 from zacek: Data race in log_init() on
 	  key_created/log_lock when calling ub_ctx_create()
