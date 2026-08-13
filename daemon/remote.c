@@ -2676,6 +2676,45 @@ do_flush_name(RES* ssl, struct worker* w, char* arg)
 	send_ok(ssl);
 }
 
+/** remove the delegation of a name from the cache */
+static void
+do_flush_delegation(RES* ssl, struct worker* w, char* arg)
+{
+	uint8_t* nm;
+	int nmlabs;
+	size_t nmlen;
+	int pc = 0; /* '+c' option */
+	if(!parse_remcachedb(ssl, &arg, &pc))
+		return;
+	if(!parse_arg_name(ssl, arg, &nm, &nmlen, &nmlabs))
+		return;
+	/* The rrsets and messages at the zone cut, both the child side and
+	 * the parent side of it.  For SOA this also removes the negative
+	 * cache element.  NSEC3 is not listed, those are never owned by
+	 * the name itself. */
+	do_cache_remove(w, nm, nmlen, LDNS_RR_TYPE_SOA, LDNS_RR_CLASS_IN, pc);
+	do_cache_remove(w, nm, nmlen, LDNS_RR_TYPE_NS, LDNS_RR_CLASS_IN, pc);
+	do_cache_remove(w, nm, nmlen, LDNS_RR_TYPE_DS, LDNS_RR_CLASS_IN, pc);
+	do_cache_remove(w, nm, nmlen, LDNS_RR_TYPE_DNSKEY, LDNS_RR_CLASS_IN, pc);
+	do_cache_remove(w, nm, nmlen, LDNS_RR_TYPE_NSEC, LDNS_RR_CLASS_IN, pc);
+	do_cache_remove(w, nm, nmlen, LDNS_RR_TYPE_CNAME, LDNS_RR_CLASS_IN, pc);
+	/* The copy of the NS rrset that was kept from the parent side, it
+	 * has a different cache key and is not removed by the above. */
+	rrset_cache_remove(w->env.rrset_cache, nm, nmlen, LDNS_RR_TYPE_NS,
+		LDNS_RR_CLASS_IN, PACKED_RRSET_PARENT_SIDE);
+	/* The DNSKEY trust state that the validator derived for the zone. */
+	if(w->env.key_cache)
+		key_cache_remove(w->env.key_cache, nm, nmlen, LDNS_RR_CLASS_IN);
+	/* The NSEC and NSEC3 records that deny the DS live in the parent
+	 * zone, and are not reachable by name from here. */
+	if(w->env.neg_cache)
+		val_neg_remove_ds_denial(w->env.neg_cache, nm, nmlen,
+			LDNS_RR_CLASS_IN);
+
+	free(nm);
+	send_ok(ssl);
+}
+
 /** printout a delegation point info */
 static int
 ssl_print_name_dp(RES* ssl, const char* str, uint8_t* nm, uint16_t dclass,
@@ -4257,6 +4296,8 @@ execute_cmd(struct daemon_remote* rc, struct rc_state* s, RES* ssl, char* cmd,
 		do_flush_type(ssl, worker, skipwhite(p+10));
 	} else if(cmdcmp(p, "flush_infra", 11)) {
 		do_flush_infra(ssl, worker, skipwhite(p+11));
+	} else if(cmdcmp(p, "flush_delegation", 16)) {
+		do_flush_delegation(ssl, worker, skipwhite(p+16));
 	} else if(cmdcmp(p, "flush", 5)) {
 		do_flush_name(ssl, worker, skipwhite(p+5));
 	} else if(cmdcmp(p, "dump_requestlist", 16)) {

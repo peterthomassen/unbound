@@ -3,6 +3,15 @@
 	  NSEC3 records that deny the DS of a name from the negative
 	  cache. Those records are held by the parent zone.
 	- Unit test for val_neg_remove_ds_denial.
+	- New unbound-control flush_delegation command, that removes the
+	  delegation of a name, so that the next lookup resolves the zone
+	  cut again. It removes the zone cut types at the name, the
+	  parent-side copy of the NS rrset, the validator key cache entry,
+	  and the NSEC and NSEC3 records in the parent zone that deny the
+	  DS. Unbound answers DS queries from the negative cache even when
+	  aggressive-nsec is turned off, so a newly created DS would
+	  otherwise stay invisible until those records expire. Unlike
+	  flush_zone it does not walk the cache.
 
 11 August 2026: Wouter
 	- Fix #1492 from zacek: Data race in log_init() on

@@ -366,6 +366,10 @@ control_command -c ub.conf flush_type www.example.net TXT
 expect_exit_value 0
 control_command -c ub.conf flush_zone example.net
 expect_exit_value 0
+control_command -c ub.conf flush_delegation example.net
+expect_exit_value 0
+control_command -c ub.conf flush_delegation .
+expect_exit_value 0
 
 # START - single thread/process tests only
 if test $num_threads -le 1; then
@@ -388,6 +392,30 @@ cache_load -c ub.conf
 expect_exit_value 0
 query www.example.com. +nordflag
 expect_answer "10.20.30.40"
+
+teststep "flush_delegation removes the zone cut, but not names below it"
+clean_reload_and_fill_cache
+query example.com. SOA
+expect_answer "root.example.com."
+query example.com. DS
+expect_answer "55555 8 2"
+cache_dump -c ub.conf
+expect_exit_value 0
+cat cache.dump
+expect_in_cache_dump "^example.com.*IN	SOA"
+# the DS type is not removed by the flush and flush_zone commands
+expect_in_cache_dump "^example.com.*IN	DS"
+expect_in_cache_dump "^www.example.com.*10.20.30.40"
+
+control_command -c ub.conf flush_delegation example.com
+expect_exit_value 0
+cache_dump -c ub.conf
+expect_exit_value 0
+cat cache.dump
+fail_in_cache_dump "^example.com.*IN	SOA"
+fail_in_cache_dump "^example.com.*IN	DS"
+# below the name is left alone, unlike flush_zone
+expect_in_cache_dump "^www.example.com.*10.20.30.40"
 
 else
 	echo ""

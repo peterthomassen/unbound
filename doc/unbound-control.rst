@@ -439,6 +439,27 @@ There are several commands that the server understands.
     If cachedb is in use.
 
 
+@@UAHL@unbound-control.commands@flush_delegation@@ [``+c``] *name*
+    Remove the delegation of the name from the cache, so that the next lookup
+    resolves the zone cut again from the parent.
+    Removes the types SOA, NS, DS, DNSKEY, NSEC and CNAME at the name, the
+    copy of the NS rrset that was kept from the parent side, the DNSKEY trust
+    state that the validator derived for the zone, and the cached NSEC and
+    NSEC3 records that deny the existence of a DS for the name.
+    Those NSEC and NSEC3 records are held by the parent zone.
+    Unbound answers DS queries from them even when **aggressive-nsec** is
+    turned off, so a newly created DS would otherwise stay invisible until
+    they expire.
+
+    Unlike **flush_zone** this does not walk the cache, and it does not touch
+    names below the name.
+    Cached data for the servers of the zone, such as glue and their round trip
+    times, is also left alone.
+
+    The ``+c`` option removes the items also from the cachedb cache.
+    If cachedb is in use.
+
+
 @@UAHL@unbound-control.commands@flush_bogus@@ [``+c``]
     Remove all bogus data from the cache.
 
