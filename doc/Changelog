@@ -10,8 +10,10 @@
 	  and the NSEC and NSEC3 records in the parent zone that deny the
 	  DS. Unbound answers DS queries from the negative cache even when
 	  aggressive-nsec is turned off, so a newly created DS would
-	  otherwise stay invisible until those records expire. Unlike
-	  flush_zone it does not walk the cache.
+	  otherwise stay invisible until those records expire. With the +s
+	  option, it also removes the CDS, CDNSKEY and CSYNC types at the
+	  name, which would otherwise contradict a changed DS until they
+	  expire. Unlike flush_zone it does not walk the cache.
 
 11 August 2026: Wouter
 	- Fix #1492 from zacek: Data race in log_init() on

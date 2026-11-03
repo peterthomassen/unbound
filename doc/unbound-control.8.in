@@ -458,7 +458,7 @@ If cachedb is in use.
 .UNINDENT
 .INDENT 0.0
 .TP
-.B flush_delegation [\fB+c\fP] \fIname\fP 
+.B flush_delegation [\fB+cs\fP] \fIname\fP 
 Remove the delegation of the name from the cache, so that the next lookup
 resolves the zone cut again from the parent.
 Removes the types SOA, NS, DS, DNSKEY, NSEC and CNAME at the name, the
@@ -477,6 +477,11 @@ times, is also left alone.
 .sp
 The \fB+c\fP option removes the items also from the cachedb cache.
 If cachedb is in use.
+.sp
+The \fB+s\fP option also removes the types CDS, CDNSKEY and CSYNC at the
+name, with which the zone signals changes of its delegation to the parent.
+They keep the validation status from when they were cached, so they would
+otherwise contradict a changed DS until they expire.
 .UNINDENT
 .INDENT 0.0
 .TP

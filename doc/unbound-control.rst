@@ -439,7 +439,7 @@ There are several commands that the server understands.
     If cachedb is in use.
 
 
-@@UAHL@unbound-control.commands@flush_delegation@@ [``+c``] *name*
+@@UAHL@unbound-control.commands@flush_delegation@@ [``+cs``] *name*
     Remove the delegation of the name from the cache, so that the next lookup
     resolves the zone cut again from the parent.
     Removes the types SOA, NS, DS, DNSKEY, NSEC and CNAME at the name, the
@@ -458,6 +458,11 @@ There are several commands that the server understands.
 
     The ``+c`` option removes the items also from the cachedb cache.
     If cachedb is in use.
+
+    The ``+s`` option also removes the types CDS, CDNSKEY and CSYNC at the
+    name, with which the zone signals changes of its delegation to the parent.
+    They keep the validation status from when they were cached, so they would
+    otherwise contradict a changed DS until they expire.
 
 
 @@UAHL@unbound-control.commands@flush_bogus@@ [``+c``]

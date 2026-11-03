@@ -370,6 +370,12 @@ control_command -c ub.conf flush_delegation example.net
 expect_exit_value 0
 control_command -c ub.conf flush_delegation .
 expect_exit_value 0
+control_command -c ub.conf flush_delegation +s example.net
+expect_exit_value 0
+control_command -c ub.conf flush_delegation +cs example.net
+expect_exit_value 0
+control_command -c ub.conf flush_delegation +x example.net
+expect_exit_value 1
 
 # START - single thread/process tests only
 if test $num_threads -le 1; then
@@ -399,12 +405,21 @@ query example.com. SOA
 expect_answer "root.example.com."
 query example.com. DS
 expect_answer "55555 8 2"
+query example.com. CDS
+expect_answer "55555 8 2"
+query example.com. CDNSKEY
+expect_answer "257 3 8"
+query example.com. CSYNC
+expect_answer "A NS AAAA"
 cache_dump -c ub.conf
 expect_exit_value 0
 cat cache.dump
 expect_in_cache_dump "^example.com.*IN	SOA"
 # the DS type is not removed by the flush and flush_zone commands
 expect_in_cache_dump "^example.com.*IN	DS"
+expect_in_cache_dump "^example.com.*IN	CDS"
+expect_in_cache_dump "^example.com.*IN	CDNSKEY"
+expect_in_cache_dump "^example.com.*IN	CSYNC"
 expect_in_cache_dump "^www.example.com.*10.20.30.40"
 
 control_command -c ub.conf flush_delegation example.com
@@ -414,8 +429,32 @@ expect_exit_value 0
 cat cache.dump
 fail_in_cache_dump "^example.com.*IN	SOA"
 fail_in_cache_dump "^example.com.*IN	DS"
+# the zone's signals to its parent stay, without the +s option
+expect_in_cache_dump "^example.com.*IN	CDS"
+expect_in_cache_dump "^example.com.*IN	CDNSKEY"
+expect_in_cache_dump "^example.com.*IN	CSYNC"
 # below the name is left alone, unlike flush_zone
 expect_in_cache_dump "^www.example.com.*10.20.30.40"
+
+teststep "flush_delegation +s also removes CDS, CDNSKEY and CSYNC"
+clean_reload_and_fill_cache
+query example.com. SOA
+expect_answer "root.example.com."
+query example.com. CDS
+expect_answer "55555 8 2"
+query example.com. CDNSKEY
+expect_answer "257 3 8"
+query example.com. CSYNC
+expect_answer "A NS AAAA"
+control_command -c ub.conf flush_delegation +s example.com
+expect_exit_value 0
+cache_dump -c ub.conf
+expect_exit_value 0
+cat cache.dump
+fail_in_cache_dump "^example.com.*IN	SOA"
+fail_in_cache_dump "^example.com.*IN	CDS"
+fail_in_cache_dump "^example.com.*IN	CDNSKEY"
+fail_in_cache_dump "^example.com.*IN	CSYNC"
 
 else
 	echo ""

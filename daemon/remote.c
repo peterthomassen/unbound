@@ -2676,6 +2676,32 @@ do_flush_name(RES* ssl, struct worker* w, char* arg)
 	send_ok(ssl);
 }
 
+/** parse the options of flush_delegation, '+c' and '+s' in any
+ * combination, modifies string to return remainder. */
+static int
+parse_flush_delegation_options(RES* ssl, char** arg, int* pc, int* ps)
+{
+	*arg = skipwhite(*arg);
+	while((*arg)[0] == '+') {
+		char* p;
+		char* arg2;
+		for(p = *arg + 1; *p && *p != ' ' && *p != '\t'; p++) {
+			if(*p == 'c')
+				*pc = 1;
+			else if(*p == 's')
+				*ps = 1;
+			else {
+				ssl_printf(ssl, "error unknown option '+%c'\n", *p);
+				return 0;
+			}
+		}
+		if(!find_arg2(ssl, *arg, &arg2))
+			return 0;
+		*arg = arg2;
+	}
+	return 1;
+}
+
 /** remove the delegation of a name from the cache */
 static void
 do_flush_delegation(RES* ssl, struct worker* w, char* arg)
@@ -2684,7 +2710,8 @@ do_flush_delegation(RES* ssl, struct worker* w, char* arg)
 	int nmlabs;
 	size_t nmlen;
 	int pc = 0; /* '+c' option */
-	if(!parse_remcachedb(ssl, &arg, &pc))
+	int ps = 0; /* '+s' option */
+	if(!parse_flush_delegation_options(ssl, &arg, &pc, &ps))
 		return;
 	if(!parse_arg_name(ssl, arg, &nm, &nmlen, &nmlabs))
 		return;
@@ -2698,6 +2725,17 @@ do_flush_delegation(RES* ssl, struct worker* w, char* arg)
 	do_cache_remove(w, nm, nmlen, LDNS_RR_TYPE_DNSKEY, LDNS_RR_CLASS_IN, pc);
 	do_cache_remove(w, nm, nmlen, LDNS_RR_TYPE_NSEC, LDNS_RR_CLASS_IN, pc);
 	do_cache_remove(w, nm, nmlen, LDNS_RR_TYPE_CNAME, LDNS_RR_CLASS_IN, pc);
+	/* With the '+s' option, the zone's signals to its parent (RFC 7344,
+	 * RFC 7477).  They keep the validation status from when they were
+	 * cached, so they would contradict a changed DS until they expire. */
+	if(ps) {
+		do_cache_remove(w, nm, nmlen, LDNS_RR_TYPE_CDS,
+			LDNS_RR_CLASS_IN, pc);
+		do_cache_remove(w, nm, nmlen, LDNS_RR_TYPE_CDNSKEY,
+			LDNS_RR_CLASS_IN, pc);
+		do_cache_remove(w, nm, nmlen, LDNS_RR_TYPE_CSYNC,
+			LDNS_RR_CLASS_IN, pc);
+	}
 	/* The copy of the NS rrset that was kept from the parent side, it
 	 * has a different cache key and is not removed by the above. */
 	rrset_cache_remove(w->env.rrset_cache, nm, nmlen, LDNS_RR_TYPE_NS,
